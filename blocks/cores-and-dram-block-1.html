@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cores and DRAM: from idle to saturated</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600&display=swap">
+<style>
+:root{
+  --bg:#f4f6f3;--ink:#14201d;--ink-2:#46544f;--ink-3:#7c8a85;
+  --line:#cdd6d1;--line-strong:#9fb0a9;--surface:#e7ece8;
+  --amber:#d98a14;--amber-edge:#a86400;--teal:#128a74;--coral:#cf5330;--wait:#aab6b1;
+  --sans:"Barlow","Helvetica Neue",Arial,sans-serif;
+  --cond:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b1211;--ink:#e6efeb;--ink-2:#a9b8b2;--ink-3:#6f7f79;
+    --line:#22302c;--line-strong:#3a4c46;--surface:#141d1b;
+    --amber:#f0a938;--amber-edge:#b97a12;--teal:#2cc0a4;--coral:#ee6a44;--wait:#4f615b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b1211;--ink:#e6efeb;--ink-2:#a9b8b2;--ink-3:#6f7f79;
+  --line:#22302c;--line-strong:#3a4c46;--surface:#141d1b;
+  --amber:#f0a938;--amber-edge:#b97a12;--teal:#2cc0a4;--coral:#ee6a44;--wait:#4f615b;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.5}
+main{max-width:920px;margin:0 auto;padding:40px 24px 56px}
+.block-id{font-size:0.95rem;color:var(--ink-2);margin:0 0 6px}
+h1{font-family:var(--cond);font-weight:600;font-size:clamp(1.9rem,4.5vw,2.75rem);line-height:1.08;letter-spacing:-0.01em;margin:0 0 12px}
+.dek{color:var(--ink-2);max-width:62ch;margin:0 0 30px}
+h2{font-family:var(--cond);font-weight:600;font-size:1.15rem;line-height:1.2;margin:0 0 10px}
+
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px 14px}
+.controls label{font-weight:500}
+.controls input[type=range]{flex:1 1 220px;min-width:0;accent-color:var(--teal);height:44px;margin:0}
+.controls output{font-weight:600;font-variant-numeric:tabular-nums;min-width:2ch;text-align:right}
+button{font:500 0.95rem/1 var(--sans);color:var(--ink);background:transparent;border:1px solid var(--line-strong);border-radius:6px;padding:0 16px;min-height:44px;cursor:pointer}
+button:hover{background:var(--surface)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.status{color:var(--ink-2);margin:10px 0 4px;min-height:1.5em}
+
+.scroll{overflow-x:auto}
+svg{display:block;width:100%;height:auto}
+.scroll svg{min-width:560px}
+svg text{font-family:var(--sans);font-size:13px;fill:var(--ink-2)}
+svg text.h{font-family:var(--cond);font-size:16px;font-weight:600;fill:var(--ink)}
+.tile{fill:none;stroke:var(--line-strong);stroke-width:1;stroke-dasharray:2 3}
+.tile.wait{stroke:var(--ink-3);stroke-dasharray:none}
+.tile.cmp{fill:var(--amber);stroke:var(--amber-edge);stroke-dasharray:none}
+.lane{fill:none;stroke:var(--line-strong);stroke-width:1}
+.fill{fill:var(--teal)}
+.dot{fill:var(--ink-2)}
+.dot.q{fill:var(--coral)}
+.dot.data{fill:var(--teal)}
+.axis{stroke:var(--line-strong);stroke-width:1}
+.ceiling{stroke:var(--line-strong);stroke-width:1;stroke-dasharray:4 4}
+.curve{fill:none;stroke:var(--ink-2);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.marker{fill:var(--ink)}
+
+.legend,.vals{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:4px 18px;font-size:0.92rem;color:var(--ink-2)}
+.legend li,.vals li{display:flex;align-items:center;gap:7px}
+.vals b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.sw{width:11px;height:11px;border-radius:2px;flex:none}
+.sw.outline{border:1px solid var(--ink-3)}
+.sw.round{border-radius:50%}
+
+.readouts{display:grid;grid-template-columns:minmax(0,1fr);gap:28px 40px;margin-top:30px}
+@media (min-width:760px){.readouts{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.block + .block{margin-top:22px}
+.bar{display:flex;height:16px;border-radius:4px;overflow:hidden;background:var(--surface);border:1px solid var(--line)}
+.bar span{display:block;height:100%;width:0;transition:width .3s}
+@media (prefers-reduced-motion:reduce){.bar span{transition:none}}
+
+.notes{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);color:var(--ink-2);font-size:0.95rem;max-width:68ch}
+.notes ul{margin:0;padding-left:1.1em}
+.notes li + li{margin-top:6px}
+
+html.record .block-id,html.record .dek,html.record .controls,html.record .notes{display:none}
+html.record main{max-width:1280px;padding:18px 32px 0}
+html.record h1{font-size:1.9rem;margin:0 0 4px;text-align:center}
+html.record .status{font-size:1.45rem;text-align:center;margin:4px 0 2px;color:var(--ink)}
+html.record .scroll{max-width:1240px;margin:0 auto}
+html.record .legend{justify-content:center;font-size:1.05rem}
+html.record .readouts{margin-top:18px;max-width:1240px;margin-left:auto;margin-right:auto;gap:20px 64px}
+html.record .vals{font-size:1.05rem}
+html.record h2{font-size:1.25rem}
+html.embed main{padding:4px 12px 16px}
+html.embed .block-id{display:none}
+</style>
+</head>
+<body>
+<main>
+  <p class="block-id">Simulation 1 · from “Hold This Until I Ask”</p>
+  <h1>Cores and DRAM: from idle to saturated</h1>
+  <p class="dek">One core cannot keep DRAM busy, and DRAM cannot keep one core busy. Add cores and watch where the idle time goes.</p>
+
+  <div class="controls">
+    <label for="n">Cores</label>
+    <input type="range" id="n" min="1" max="24" step="1" value="1">
+    <output id="nOut" for="n">1</output>
+    <button id="auto" type="button">Play sequence</button>
+    <button id="pp" type="button">Pause animation</button>
+  </div>
+  <p id="st" class="status" aria-live="polite">Both sides are mostly idle</p>
+
+  <div class="scroll">
+    <svg viewBox="0 0 680 290" role="img" aria-labelledby="sceneTitle sceneDesc">
+      <title id="sceneTitle">Cores and DRAM lanes</title>
+      <desc id="sceneDesc">Core tiles on the left send request dots to six DRAM lanes on the right. A lane fills while it serves a request. When all lanes are busy, requests wait in a line in the middle.</desc>
+      <text class="h" x="40" y="30">Cores</text>
+      <text class="h" x="450" y="30">DRAM</text>
+      <g id="gt"></g><g id="gl"></g><g id="gd"></g>
+    </svg>
+  </div>
+  <ul class="legend">
+    <li><span class="sw" style="background:var(--amber)"></span>Core computing</li>
+    <li><span class="sw outline"></span>Core waiting</li>
+    <li><span class="sw round" style="background:var(--coral)"></span>Request waiting in line</li>
+    <li><span class="sw" style="background:var(--teal)"></span>Lane busy</li>
+  </ul>
+
+  <div class="readouts">
+    <div>
+      <div class="block">
+        <h2>A core's time</h2>
+        <div class="bar"><span id="b1" style="background:var(--amber)"></span><span id="b2" style="background:var(--wait)"></span><span id="b3" style="background:var(--coral)"></span></div>
+        <ul class="vals">
+          <li><span class="sw" style="background:var(--amber)"></span>Computing <b id="v1"></b></li>
+          <li><span class="sw" style="background:var(--wait)"></span>Waiting on DRAM <b id="v2"></b></li>
+          <li><span class="sw" style="background:var(--coral)"></span>Waiting in line <b id="v3"></b></li>
+        </ul>
+      </div>
+      <div class="block">
+        <h2>DRAM lanes</h2>
+        <div class="bar"><span id="b4" style="background:var(--teal)"></span></div>
+        <ul class="vals">
+          <li><span class="sw" style="background:var(--teal)"></span>Busy <b id="v4"></b></li>
+          <li><span class="sw outline"></span>Idle <b id="v5"></b></li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <h2>System throughput</h2>
+      <svg viewBox="0 0 440 190" role="img" aria-labelledby="chartTitle chartDesc">
+        <title id="chartTitle">System throughput versus number of cores</title>
+        <desc id="chartDesc">Throughput rises in proportion to core count until DRAM saturates at about ten cores, then stays flat.</desc>
+        <text x="420" y="34" text-anchor="end">DRAM ceiling</text>
+        <line class="ceiling" x1="20" y1="44" x2="420" y2="44"/>
+        <line class="axis" x1="20" y1="140" x2="420" y2="140"/>
+        <polyline id="cv" class="curve"/>
+        <circle id="mk" class="marker" r="6" cx="20" cy="140"/>
+        <g id="tk"></g>
+        <text x="220" y="182" text-anchor="middle">Cores</text>
+      </svg>
+    </div>
+  </div>
+
+  <section class="notes">
+    <h2>About the model</h2>
+    <ul>
+      <li>Each core repeats one loop: compute briefly, request data from DRAM, wait for it to come back.</li>
+      <li>DRAM is six lanes. A lane is held for the full round trip, so bandwidth is lanes divided by latency.</li>
+      <li>The dots are a live run. The bars and the curve show the same model's steady state.</li>
+    </ul>
+  </section>
+</main>
+<script>
+(function(){
+  const NS='http://www.w3.org/2000/svg',K=6,C=0.35,S=1.8,V=700,MAX=24,EX=410,EY=156,H=S+0.1;
+  const $=id=>document.getElementById(id);
+  const mk=(t,a,p)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e};
+  const cores=[],lanes=[],queue=[];
+  let n=0,sum=0;
+
+  for(let i=0;i<MAX;i++){
+    const cx=55+(i%4)*38,cy=61+Math.floor(i/4)*38;
+    const r=mk('rect',{x:cx-15,y:cy-15,width:30,height:30,rx:4,'class':'tile'},$('gt'));
+    const d=mk('circle',{r:4,cx:cx,cy:cy,opacity:0,'class':'dot'},$('gd'));
+    sum+=(2*Math.hypot(EX-cx,EY-cy)+100)/V;
+    cores.push({cx,cy,r,d,x:cx,y:cy,st:'off',t:0,s:S,lane:-1});
+  }
+  const T0=C+S+sum/MAX;
+  for(let j=0;j<K;j++){
+    const y=59+j*34;
+    mk('rect',{x:450,y:y,width:170,height:24,rx:4,'class':'lane'},$('gl'));
+    const f=mk('rect',{x:450,y:y,width:0,height:24,rx:4,'class':'fill'},$('gl'));
+    lanes.push({y:y+12,f,st:0});
+  }
+
+  const tile=c=>c.r.setAttribute('class','tile'+(c.st==='off'?'':c.st==='cmp'?' cmp':' wait'));
+  const dot=(c,k)=>c.d.setAttribute('class','dot'+(k?' '+k:''));
+  function free(){for(let j=0;j<K;j++)if(lanes[j].st===0)return j;return -1}
+  function mv(c,tx,ty,dt){
+    const dx=tx-c.x,dy=ty-c.y,d=Math.hypot(dx,dy),m=V*dt;
+    if(d<=m){c.x=tx;c.y=ty;return true}
+    c.x+=dx/d*m;c.y+=dy/d*m;return false;
+  }
+  function take(c,j){lanes[j].st=1;c.lane=j;c.st='hop';dot(c,'')}
+  function drop(c){
+    if(c.lane>=0){lanes[c.lane].st=0;lanes[c.lane].f.setAttribute('width',0);c.lane=-1}
+    const k=queue.indexOf(c);if(k>=0)queue.splice(k,1);
+    c.st='off';c.d.setAttribute('opacity',0);tile(c);
+  }
+
+  function step(dt){
+    for(let i=0;i<n;i++){
+      const c=cores[i];
+      if(c.st==='cmp'){
+        c.t-=dt;
+        if(c.t<=0){c.st='out';c.x=c.cx;c.y=c.cy;c.d.setAttribute('opacity',1);dot(c,'');tile(c)}
+      }else if(c.st==='out'){
+        const blocked=queue.length>0||free()<0;
+        if(mv(c,blocked?EX-queue.length*10:EX,EY,dt)){
+          const j=free();
+          if(!queue.length&&j>=0)take(c,j);
+          else{c.st='q';queue.push(c);dot(c,'q')}
+        }
+      }else if(c.st==='q'){
+        mv(c,EX-queue.indexOf(c)*10,EY,dt);
+      }else if(c.st==='hop'){
+        const L=lanes[c.lane];
+        if(mv(c,450,L.y,dt)){c.st='srv';c.s=S*(0.85+0.3*Math.random());c.t=c.s;L.st=2;c.d.setAttribute('opacity',0)}
+      }else if(c.st==='srv'){
+        const L=lanes[c.lane];c.t-=dt;
+        if(c.t<=0){L.st=0;L.f.setAttribute('width',0);c.lane=-1;c.st='back';c.x=450;c.y=L.y;c.d.setAttribute('opacity',1);dot(c,'data')}
+        else L.f.setAttribute('width',(170*(1-c.t/c.s)).toFixed(1));
+      }else if(c.st==='back'){
+        if(mv(c,c.cx,c.cy,dt)){c.st='cmp';c.t=C*(0.6+0.8*Math.random());c.d.setAttribute('opacity',0);tile(c)}
+      }
+      c.d.setAttribute('cx',c.x.toFixed(1));c.d.setAttribute('cy',c.y.toFixed(1));
+    }
+    while(queue.length){const j=free();if(j<0)break;take(queue.shift(),j)}
+  }
+
+  const pct=v=>Math.round(v*100)+'%';
+  const w=(id,v)=>{$(id).style.width=(v*100).toFixed(1)+'%'};
+  function upd(){
+    const X=Math.min(n/T0,K/H),u=X*H/K,fc=X*C/n,fq=Math.max(0,1-X*T0/n),fl=1-fc-fq;
+    w('b1',fc);w('b2',fl);w('b3',fq);w('b4',u);
+    $('v1').textContent=pct(fc);$('v2').textContent=pct(fl);$('v3').textContent=pct(fq);
+    $('v4').textContent=pct(u);$('v5').textContent=pct(1-u);
+    $('mk').setAttribute('cx',(20+400*n/MAX).toFixed(1));
+    $('mk').setAttribute('cy',(140-96*u).toFixed(1));
+    $('st').textContent=u<0.6?'Both sides are mostly idle':u<0.999?'DRAM is filling up':'DRAM is saturated. Extra cores only wait in line';
+    $('nOut').textContent=n;
+  }
+  function setN(v){
+    n=v;$('n').value=v;
+    for(let i=0;i<MAX;i++){
+      const c=cores[i];
+      if(i<n){if(c.st==='off'){c.st='cmp';c.t=C*(0.6+0.8*Math.random());tile(c)}}
+      else if(c.st!=='off')drop(c);
+    }
+    upd();
+  }
+
+  const xk=20+400*(K*T0/H)/MAX;
+  $('cv').setAttribute('points','20,140 '+xk.toFixed(1)+',44 420,44');
+  [1,6,12,18,24].forEach(v=>{
+    const t=mk('text',{x:(20+400*v/MAX).toFixed(1),y:160,'text-anchor':'middle'},$('tk'));
+    t.textContent=v;
+  });
+
+  let run=!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches),timer=null,last=0;
+  function label(){$('pp').textContent=run?'Pause animation':'Run animation'}
+  function stop(){clearInterval(timer);timer=null;$('auto').textContent='Play sequence'}
+  $('pp').addEventListener('click',()=>{run=!run;label()});
+  $('n').addEventListener('input',e=>{if(timer)stop();setN(+e.target.value)});
+  $('auto').addEventListener('click',()=>{
+    if(timer){stop();return}
+    run=true;label();setN(1);$('auto').textContent='Stop sequence';
+    timer=setInterval(()=>{if(n>=MAX){stop();return}setN(n+1)},1500);
+  });
+  label();setN(1);
+  if(location.hash==='#record'){document.documentElement.classList.add('record');setTimeout(()=>$('auto').click(),1500)}
+  function frame(ts){
+    if(run&&last)step(Math.min(0.05,(ts-last)/1000));
+    last=ts;requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+<script>
+(function(){
+  if(location.search.indexOf('embed')>=0)document.documentElement.classList.add('embed');
+  if(window.parent===window)return;
+  const send=()=>parent.postMessage({navonaBlock:true,title:document.title,height:Math.ceil(document.body.getBoundingClientRect().height)},'*');
+  if(window.ResizeObserver)new ResizeObserver(send).observe(document.body);
+  window.addEventListener('load',send);send();
+})();
+</script>
+</body>
+</html>

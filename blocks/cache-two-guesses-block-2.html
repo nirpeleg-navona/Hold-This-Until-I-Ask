@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The cache's two guesses</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600&display=swap">
+<style>
+:root{
+  --bg:#f4f6f3;--ink:#14201d;--ink-2:#46544f;--ink-3:#7c8a85;
+  --line:#cdd6d1;--line-strong:#9fb0a9;--surface:#e7ece8;
+  --amber:#d98a14;--amber-edge:#a86400;--teal:#128a74;--coral:#cf5330;--wait:#aab6b1;
+  --violet:#6a4fd6;--violet-soft:#dcd5f6;--slate:#5d7b94;
+  --sans:"Barlow","Helvetica Neue",Arial,sans-serif;
+  --cond:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b1211;--ink:#e6efeb;--ink-2:#a9b8b2;--ink-3:#6f7f79;
+    --line:#22302c;--line-strong:#3a4c46;--surface:#141d1b;
+    --amber:#f0a938;--amber-edge:#b97a12;--teal:#2cc0a4;--coral:#ee6a44;--wait:#4f615b;
+    --violet:#a493f2;--violet-soft:#2f2a5a;--slate:#7d9bb4;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b1211;--ink:#e6efeb;--ink-2:#a9b8b2;--ink-3:#6f7f79;
+  --line:#22302c;--line-strong:#3a4c46;--surface:#141d1b;
+  --amber:#f0a938;--amber-edge:#b97a12;--teal:#2cc0a4;--coral:#ee6a44;--wait:#4f615b;
+  --violet:#a493f2;--violet-soft:#2f2a5a;--slate:#7d9bb4;
+}
+*,*::before,*::after{box-sizing:inherit}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.5}
+main{max-width:920px;margin:0 auto;padding:40px 24px 56px}
+.block-id{font-size:0.95rem;color:var(--ink-2);margin:0 0 6px}
+h1{font-family:var(--cond);font-weight:600;font-size:clamp(1.9rem,4.5vw,2.75rem);line-height:1.08;letter-spacing:-0.01em;margin:0 0 12px}
+.dek{color:var(--ink-2);max-width:64ch;margin:0 0 26px}
+h2{font-family:var(--cond);font-weight:600;font-size:1.15rem;line-height:1.2;margin:0 0 8px}
+
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+.ctl{display:flex;align-items:center;gap:10px;flex:1 1 240px;min-width:0}
+.ctl label{font-weight:500;white-space:nowrap}
+.ctl input[type=range]{flex:1 1 120px;min-width:0;accent-color:var(--teal);height:44px;margin:0}
+.ctl input[type=range]:disabled{opacity:.45}
+.ctl output{font-weight:600;font-variant-numeric:tabular-nums;min-width:2ch;text-align:right}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;min-height:44px}
+.seg button + button{border-left:1px solid var(--line-strong)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+button{font:500 0.95rem/1 var(--sans);color:var(--ink);background:transparent;border:1px solid var(--line-strong);border-radius:6px;padding:0 16px;min-height:44px;cursor:pointer}
+button:hover{background:var(--surface)}
+.seg button[aria-pressed="true"]:hover{background:var(--ink)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.hint{font-size:0.9rem;color:var(--ink-3);margin:4px 0 0;min-height:1.4em}
+.status{color:var(--ink-2);margin:12px 0 4px;min-height:1.5em}
+
+.scroll{overflow-x:auto}
+svg{display:block;width:100%;height:auto}
+.scroll svg{min-width:560px}
+svg text{font-family:var(--sans);font-size:13px;fill:var(--ink-2)}
+svg text.h{font-family:var(--cond);font-size:16px;font-weight:600;fill:var(--ink)}
+.tile{fill:none;stroke:var(--line-strong);stroke-width:1;stroke-dasharray:2 3}
+.tile.wait{stroke:var(--ink-3);stroke-dasharray:none}
+.tile.cmp{fill:var(--amber);stroke:var(--amber-edge);stroke-dasharray:none}
+.lane{fill:none;stroke:var(--line-strong);stroke-width:1}
+.fill{fill:var(--teal)}
+.dot{fill:var(--ink-2)}
+.dot.q{fill:var(--coral)}
+.dot.data{fill:var(--teal)}
+.dot.guess{fill:var(--bg);stroke:var(--violet);stroke-width:1.6}
+.dot.held{fill:var(--violet)}
+.dot.room{fill:var(--bg);stroke:var(--coral);stroke-width:1.6}
+.slot{fill:none;stroke:var(--line);stroke-width:1;stroke-dasharray:2 2}
+.slot.live{fill:var(--slate);stroke:var(--slate);stroke-dasharray:none}
+.slot.guess{fill:var(--violet-soft);stroke:var(--violet);stroke-dasharray:none}
+.slot.held{fill:var(--violet);stroke:var(--violet);stroke-dasharray:none}
+.slot.evict{fill:var(--coral);stroke:var(--coral);stroke-dasharray:none}
+.strike{stroke:var(--violet);stroke-width:1.6;stroke-linecap:round}
+.axis{stroke:var(--line-strong);stroke-width:1}
+.ceiling{stroke:var(--line-strong);stroke-width:1;stroke-dasharray:4 4}
+.cv{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.cv.work{stroke:var(--ink)}
+.cv.tr{stroke:var(--violet);stroke-dasharray:6 4}
+.cv.nec{stroke:var(--slate);stroke-dasharray:2 3}
+.cv.prev{opacity:.35}
+.pt{fill:var(--ink)}
+.live{fill:var(--bg);stroke:var(--ink);stroke-width:1.6}
+.empty{font-size:12px;fill:var(--ink-3)}
+
+.legend,.vals{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:4px 16px;font-size:0.92rem;color:var(--ink-2)}
+.legend li,.vals li{display:flex;align-items:center;gap:7px}
+.vals b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.sw{width:11px;height:11px;border-radius:2px;flex:none}
+.sw.outline{border:1px solid var(--ink-3)}
+.sw.round{border-radius:50%}
+.sw.hollow{border:1.6px solid var(--violet);background:var(--bg)}
+.sw.hollow.coral{border-color:var(--coral)}
+.sw.struck{position:relative;background:var(--violet-soft);border:1px solid var(--violet)}
+.sw.struck::after{content:"";position:absolute;left:1px;top:4px;width:8px;height:1.6px;background:var(--violet);transform:rotate(45deg)}
+.stripe{background:repeating-linear-gradient(135deg,var(--violet) 0 3px,var(--surface) 3px 6px)}
+.lw{width:18px;height:0;border-top:2px solid var(--ink);flex:none}
+.lw.tr{border-top:2px dashed var(--violet)}
+.lw.nec{border-top:2px dotted var(--slate)}
+.lw.prev{opacity:.35}
+
+.readouts{display:grid;grid-template-columns:minmax(0,1fr);gap:28px 40px;margin-top:30px}
+@media (min-width:760px){.readouts{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.block + .block{margin-top:20px}
+.bar{display:flex;height:16px;border-radius:4px;overflow:hidden;background:var(--surface);border:1px solid var(--line)}
+.bar span{display:block;height:100%;width:0;transition:width .3s}
+.bar.two{background:transparent;border:0;gap:4px;height:12px}
+.bar.two span{border-radius:3px}
+@media (prefers-reduced-motion:reduce){.bar span{transition:none}}
+.sub{font-size:0.9rem;color:var(--ink-3);margin:4px 0 0}
+
+.notes{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);color:var(--ink-2);font-size:0.95rem;max-width:70ch}
+.notes ul{margin:0;padding-left:1.1em}
+.notes li + li{margin-top:6px}
+
+html.record .block-id,html.record .dek,html.record .controls,html.record .hint,html.record .btns,html.record .notes{display:none}
+html.record main{max-width:1280px;padding:14px 32px 0}
+html.record h1{font-size:1.8rem;margin:0 0 2px;text-align:center}
+html.record .status{font-size:1.4rem;text-align:center;margin:2px 0 0;color:var(--ink)}
+html.record .scroll{max-width:900px;margin:0 auto}
+html.record .legend{justify-content:center;font-size:0.98rem;margin-top:4px}
+html.record .readouts{margin-top:10px;max-width:1200px;margin-left:auto;margin-right:auto;gap:14px 56px}
+html.record .block + .block{margin-top:10px}
+html.record .vals{font-size:0.98rem}
+html.record h2{font-size:1.15rem;margin-bottom:4px}
+html.record .sub{font-size:0.9rem}
+html.embed main{padding:4px 12px 16px}
+html.embed .block-id{display:none}
+</style>
+</head>
+<body>
+<main>
+  <p class="block-id">Simulation 2 · from “Hold This Until I Ask”</p>
+  <h1>The cache's two guesses</h1>
+  <p class="dek">A shared cache now sits between the cores and DRAM. Under the old contract a line is brought in by one guess and thrown out by another, and the one party that knows is never asked. The ledger below is the one the machine does not keep.</p>
+
+  <div class="controls">
+    <div class="ctl">
+      <label for="n">Cores</label>
+      <input type="range" id="n" min="1" max="24" step="1" value="4">
+      <output id="nOut" for="n">4</output>
+    </div>
+    <div class="ctl">
+      <label for="d">Lookahead</label>
+      <input type="range" id="d" min="0" max="8" step="1" value="4">
+      <output id="dOut" for="d">4</output>
+    </div>
+    <div class="seg" role="group" aria-label="Contract">
+      <button type="button" id="cGuess" aria-pressed="true">Guess</button>
+      <button type="button" id="cDeclare" aria-pressed="false">Declare</button>
+    </div>
+  </div>
+  <p id="hint" class="hint"></p>
+  <div class="btns">
+    <button id="auto" type="button">Play sequence</button>
+    <button id="pp" type="button">Pause animation</button>
+    <button id="reset" type="button">Reset counts</button>
+  </div>
+  <p id="st" class="status" aria-live="polite"></p>
+
+  <div class="scroll">
+    <svg viewBox="0 0 680 300" role="img" aria-labelledby="sceneTitle sceneDesc">
+      <title id="sceneTitle">Cores, a shared cache and DRAM lanes</title>
+      <desc id="sceneDesc">Core tiles on the left send requests to a shared cache strip in the middle. Misses and lookahead fetches continue to six DRAM lanes on the right, waiting in a line when the lanes are busy. Cache slots show whether each line was demanded, guessed, or held under a declaration, and flash when an eviction discards something that would have been used.</desc>
+      <text class="h" x="40" y="30">Cores</text>
+      <text class="h" x="208" y="30">L3</text>
+      <text x="236" y="30">shared</text>
+      <text class="h" x="450" y="30">DRAM</text>
+      <g id="gt"></g><g id="gs"></g><g id="gl"></g><g id="gq"></g><g id="gd"></g>
+    </svg>
+  </div>
+  <ul class="legend">
+    <li><span class="sw" style="background:var(--amber)"></span>Core computing</li>
+    <li><span class="sw outline"></span>Core waiting</li>
+    <li><span class="sw round" style="background:var(--ink-2)"></span>Demand request</li>
+    <li><span class="sw round" style="background:var(--coral)"></span>Waiting in line</li>
+    <li><span class="sw round hollow"></span>Guessed fetch</li>
+    <li><span class="sw round" style="background:var(--violet)"></span>Declared fetch, held</li>
+    <li><span class="sw round hollow coral"></span>Waiting for room</li>
+    <li><span class="sw round" style="background:var(--teal)"></span>Data returning</li>
+  </ul>
+  <ul class="legend">
+    <li><span class="sw" style="background:var(--slate)"></span>Slot: demanded line</li>
+    <li><span class="sw" style="background:var(--violet-soft);border:1px solid var(--violet)"></span>Slot: guess, waiting</li>
+    <li><span class="sw struck"></span>Slot: guess, never wanted</li>
+    <li><span class="sw" style="background:var(--violet)"></span>Slot: held until asked</li>
+    <li><span class="sw" style="background:var(--coral)"></span>Evicting a line that would have been used</li>
+  </ul>
+
+  <div class="readouts">
+    <div>
+      <div class="block">
+        <h2>Lines fetched ahead of demand, by fate</h2>
+        <div class="bar"><span id="bCons" style="background:var(--violet)"></span><span id="bLate" class="stripe"></span><span id="bLost" style="background:var(--coral)"></span><span id="bDead" style="background:var(--wait)"></span></div>
+        <ul class="vals">
+          <li><span class="sw" style="background:var(--violet)"></span>Used in time <b id="vCons"></b></li>
+          <li><span class="sw stripe"></span>Arrived late, core waited <b id="vLate"></b></li>
+          <li><span class="sw" style="background:var(--coral)"></span>Lost before use <b id="vLost"></b></li>
+          <li><span class="sw" style="background:var(--wait)"></span>Never wanted <b id="vDead"></b></li>
+        </ul>
+        <p class="sub" id="subFate"></p>
+      </div>
+      <div class="block">
+        <h2>Hits the lookahead gave, and took away</h2>
+        <div class="bar two"><span id="bGain" style="background:var(--violet)"></span><span id="bDisp" style="background:var(--coral)"></span></div>
+        <ul class="vals">
+          <li><span class="sw" style="background:var(--violet)"></span>Gave <b id="vGain"></b></li>
+          <li><span class="sw" style="background:var(--coral)"></span>Took away <b id="vDisp"></b></li>
+        </ul>
+        <p class="sub">Measured against a shadow cache of the same size that holds only demanded lines.</p>
+      </div>
+      <div class="block">
+        <h2>DRAM transfers, by fate</h2>
+        <div class="bar"><span id="bNec" style="background:var(--teal)"></span><span id="bExc" style="background:var(--coral)"></span></div>
+        <ul class="vals">
+          <li><span class="sw" style="background:var(--teal)"></span>Consumed <b id="vNec"></b></li>
+          <li><span class="sw" style="background:var(--coral)"></span>Wasted: lost or never wanted <b id="vExc"></b></li>
+        </ul>
+        <p class="sub" id="subRate"></p>
+        <p class="sub" id="subTr"></p>
+      </div>
+      <div class="block">
+        <h2>DRAM lanes</h2>
+        <div class="bar"><span id="bBusy" style="background:var(--teal)"></span></div>
+        <ul class="vals">
+          <li><span class="sw" style="background:var(--teal)"></span>Busy <b id="vBusy"></b></li>
+          <li><span class="sw outline"></span>Idle <b id="vIdle"></b></li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <h2>Throughput against cores</h2>
+      <svg viewBox="0 0 440 236" role="img" aria-labelledby="chartTitle chartDesc">
+        <title id="chartTitle">Work done and DRAM transfers against number of cores</title>
+        <desc id="chartDesc">Lines per second against core count, recorded as the sequence plays: work done, total DRAM transfers, and the transfers demand alone would need. A dotted line marks the DRAM ceiling. The work done in a previous run stays on the chart in a muted colour.</desc>
+        <text x="420" y="34" text-anchor="end">lines / s</text>
+        <line class="axis" x1="20" y1="190" x2="420" y2="190"/>
+        <line id="ceil" class="ceiling" x1="20" y1="145.6" x2="420" y2="145.6"/>
+        <text id="ceilT" x="24" y="140">DRAM ceiling (transfers)</text>
+        <text x="16" y="194" text-anchor="end">0</text>
+        <text x="16" y="114" text-anchor="end">6</text>
+        <text x="16" y="34" text-anchor="end">12</text>
+        <polyline id="pvW" class="cv work prev"/>
+        <polyline id="cvW" class="cv work"/>
+        <polyline id="cvT" class="cv tr"/>
+        <polyline id="cvN" class="cv nec"/>
+        <g id="pts"></g>
+        <circle id="live" class="live" r="4.5" opacity="0"/>
+        <text id="empty" x="220" y="92" text-anchor="middle" class="empty"><tspan x="220">Points appear as the model runs at each core count.</tspan><tspan x="220" dy="16">Play sequence records the whole curve.</tspan></text>
+        <g id="tk"></g>
+        <text x="220" y="230" text-anchor="middle">Cores</text>
+      </svg>
+      <ul class="legend">
+        <li><span class="lw"></span>Work done</li>
+        <li><span class="lw tr"></span>DRAM transfers</li>
+        <li><span class="lw nec"></span>Demand alone would need</li>
+      </ul>
+      <ul class="legend">
+        <li>Current run: <b id="curLabel"></b></li>
+        <li id="prevItem" hidden><span class="lw prev"></span>Previous run, work done: <b id="prevLabel"></b></li>
+      </ul>
+      <p class="sub">A point is recorded once the model has run a few seconds at a core count, each averaged over a minute of model time; Play sequence walks through all of them. Changing the contract or the lookahead keeps the last run's work line for comparison.</p>
+    </div>
+  </div>
+
+  <section class="notes">
+    <h2>About the model</h2>
+    <ul>
+      <li>Each core alternates between a small hot set it revisits and a stream it reads in order. Streams run in segments of a few lines, then jump; the prefetcher is never told where a segment ends, so under the old contract every segment finishes in guesses that nothing will want.</li>
+      <li>The cache has 48 slots shared by every core and evicts the least recently used line. DRAM is six lanes served first come, first served. The controller cannot tell a demand from a guess, and the only back-pressure on guessing is the line at DRAM.</li>
+      <li>The simulation generates the demand sequence, so it knows each line's future and can label its fate at eviction. Hits gained and taken away are measured against a shadow cache of the same size that holds only demanded lines.</li>
+      <li>Declare: on each stream access the core states the rest of its segment, and a line is fetched only against a hold the cache has granted. The cache keeps a bounded budget for holds, half of its slots shared among the cores, and a used stream line is released because no reuse was declared. When the budget is spent, the core waits at the cache until a held line is released: under this contract DRAM transfers matter more than one core's latency. The lookahead slider does nothing here, because the batch is sized by the room, not by a guess about time.</li>
+      <li>The numbers come from a twin of the same model running twenty times faster than the animation, so each rate is an average over a minute of model time and each share over several minutes. The animation shows the mechanism; the twin supplies the statistics.</li>
+      <li>The numbers are illustrative. The claims are the directions: what happens to each count as cores are added, as lookahead deepens, and when the contract changes.</li>
+    </ul>
+  </section>
+</main>
+<script>
+(function(){
+  const NS='http://www.w3.org/2000/svg';
+  const $=id=>document.getElementById(id);
+  const rnd=(a,b)=>a+Math.random()*(b-a);
+  const MAX=24,K=6,S=48,B=24,H=3,P_HOT=0.7,C=0.6,HIT=0.12,SRV=1.8,V=700,YMAX=12,SPEED=20,W=60;
+  const EX=410,EY=156,L3IN={x:200,y:124},L3OUT={x:313,y:124};
+  const CEIL=K/SRV;
+  const stub={setAttribute(){},remove(){}};
+
+  function World(vis){
+    const mk=vis?(t,a,p)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e}:()=>stub;
+    const gt=vis?$('gt'):null,gs=vis?$('gs'):null,gl=vis?$('gl'):null,gd=vis?$('gd'):null,gq=vis?$('gq'):null;
+    let now=0,n=0,D=4,contract='guess',heldCount=0,winStart=0,epoch=0;
+    const cores=[],slots=[],lanes=[],queue=[],reqs=[],roomQueue=[];
+    const present=new Map(),pending=new Map(),shadow=new Map();
+    const L={issued:0,consumed:0,late:0,lost:0,dead:0,gained:0,displaced:0,demandTr:0,trAll:0,necAll:0};
+    const ev={transfers:[],necessary:[],work:[],busy:[]};
+    const flashing=new Set();
+
+    for(let i=0;i<MAX;i++){
+      const cx=55+(i%4)*38,cy=61+Math.floor(i/4)*38;
+      const r=mk('rect',{x:cx-15,y:cy-15,width:30,height:30,rx:4,'class':'tile'},gt);
+      const d=mk('circle',{r:4,cx:cx,cy:cy,opacity:0,'class':'dot'},gd);
+      cores.push({id:i,cx,cy,r,d,x:cx,y:cy,st:'off',t:0,seg:null,nextBase:0,req:null,waitKey:null,access:null,shadowHit:false});
+    }
+    for(let i=0;i<S;i++){
+      const x=208+(i%6)*17,y=58+Math.floor(i/6)*17;
+      const rect=mk('rect',{x,y,width:14,height:14,rx:2,'class':'slot'},gs);
+      const strike=mk('line',{x1:x+3.5,y1:y+3.5,x2:x+10.5,y2:y+10.5,'class':'strike',opacity:0},gs);
+      slots.push({i,rect,strike,line:null,flashT:0});
+    }
+    for(let j=0;j<K;j++){
+      const y=59+j*34;
+      mk('rect',{x:450,y:y,width:170,height:24,rx:4,'class':'lane'},gl);
+      const f=mk('rect',{x:450,y:y,width:0,height:24,rx:4,'class':'fill'},gl);
+      lanes.push({y:y+12,f,st:0});
+    }
+    const qmore=mk('text',{x:364,y:242,'text-anchor':'middle',opacity:0},gq);
+
+    const tile=c=>c.r.setAttribute('class','tile'+(c.st==='off'?'':c.st==='cmp'?' cmp':' wait'));
+    function paint(s){
+      if(!vis)return;
+      const ln=s.line;let cls='slot';
+      if(ln) cls+=ln.state==='demand'?' live':ln.state==='held'?' held':' guess';
+      if(s.flashT>0) cls+=' evict';
+      s.rect.setAttribute('class',cls);
+      s.strike.setAttribute('opacity',ln&&ln.dead?1:0);
+    }
+    function flash(s){if(!vis)return;s.flashT=0.45;flashing.add(s);paint(s)}
+    function mv(o,tx,ty,dt){
+      const dx=tx-o.x,dy=ty-o.y,d=Math.hypot(dx,dy),m=V*dt;
+      if(d<=m){o.x=tx;o.y=ty;return true}
+      o.x+=dx/d*m;o.y+=dy/d*m;return false;
+    }
+    const qpos=i=>({x:400-(i%10)*8,y:150+Math.min(6,Math.floor(i/10))*11});
+    function free(){for(let j=0;j<K;j++)if(lanes[j].st===0)return j;return -1}
+    function dotClass(r){r.dot.setAttribute('class','dot'+(r.kind==='demand'?'':' '+r.kind)+(r.st==='q'&&r.kind==='demand'?' q':'')+(r.st==='back'&&r.kind==='demand'?' data':''))}
+
+    function newSegment(c){const len=Math.floor(rnd(5,13));const start=c.nextBase;c.nextBase+=1000;c.seg={start,end:start+len-1,pos:start}}
+    function wanted(ln){const seg=cores[ln.core].seg;return !!seg&&ln.addr>=seg.pos&&ln.addr<=seg.end}
+    function release(ln){const s=ln.slot;if(ln.state==='held')heldCount--;present.delete(ln.key);s.line=null;paint(s)}
+    function evict(s){
+      const ln=s.line;
+      if(ln.state==='guess'||ln.state==='held'){if(ln.state==='held')heldCount--;if(wanted(ln)){if(ln.epoch===epoch)L.lost++;flash(s)}else if(ln.epoch===epoch)L.dead++}
+      else if(shadow.has(ln.key)) flash(s);
+      present.delete(ln.key);s.line=null;paint(s);
+    }
+    function install(key,core,kind,addr,state,ep){
+      if(present.has(key)){const ln=present.get(key);ln.lastUse=now;return ln}
+      let s=null;
+      for(const x of slots)if(!x.line){s=x;break}
+      if(!s){
+        for(const x of slots){if(x.line.state==='held')continue;if(!s||x.line.lastUse<s.line.lastUse)s=x}
+        if(!s){if(state!=='demand')return null;for(const x of slots)if(!s||x.line.lastUse<s.line.lastUse)s=x}
+        evict(s);
+      }
+      const ln={key,core,kind,addr,state,slot:s,lastUse:now,dead:false,epoch:ep===undefined?epoch:ep};
+      s.line=ln;present.set(key,ln);paint(s);return ln;
+    }
+
+    function newReq(kind,core,key,meta,ahead){
+      const x=core?core.x:L3OUT.x,y=core?core.y:L3OUT.y+rnd(-14,14);
+      const dot=core?core.d:mk('circle',{r:3.5,cx:x,cy:y,'class':'dot '+kind},gd);
+      const r={kind,core,key,meta,ahead,x,y,st:'out',t:0,s:0,lane:-1,dot,epoch};
+      dot.setAttribute('opacity',1);dotClass(r);
+      reqs.push(r);pending.set(key,r);return r;
+    }
+    function take(r,j){lanes[j].st=1;r.lane=j;r.st='hop';dotClass(r)}
+    function cancel(r){
+      pending.delete(r.key);
+      const qi=queue.indexOf(r);if(qi>=0)queue.splice(qi,1);
+      if(r.lane>=0){lanes[r.lane].st=0;lanes[r.lane].f.setAttribute('width',0)}
+      const i=reqs.indexOf(r);if(i>=0)reqs.splice(i,1);
+      if(r.kind==='held')heldCount--;
+      if(r.core)r.core.req=null;else r.dot.remove();
+    }
+    function complete(r){
+      pending.delete(r.key);
+      const i=reqs.indexOf(r);if(i>=0)reqs.splice(i,1);
+      L.trAll++;if(!r.ahead)L.demandTr++;
+      let ln=null;
+      if(r.kind==='demand'){
+        const c=r.core,a=c.access;
+        ln=install(r.key,c.id,a.kind,a.addr,'demand',r.epoch);
+        c.req=null;c.st='ret';c.x=L3OUT.x;c.y=L3OUT.y;c.d.setAttribute('class','dot data');
+      }else{
+        ln=install(r.key,r.meta.core,'stream',r.meta.addr,r.kind,r.epoch);
+        if(r.kind==='held'&&!ln)heldCount--;
+        r.dot.remove();
+      }
+      for(const c of cores){
+        if(c.st==='merge'&&c.waitKey===r.key){
+          if(r.ahead&&r.epoch===epoch)L.late++;
+          if(ln){if(ln.state==='held'){heldCount--}ln.state='demand';ln.dead=false;ln.lastUse=now;paint(ln.slot);if(contract==='declare'&&ln.kind==='stream')release(ln)}
+          c.waitKey=null;c.st='hit';c.t=HIT;c.d.setAttribute('class','dot data');
+        }
+      }
+      if(contract==='declare')grantWaiting();
+    }
+    function stepReq(r,dt){
+      if(r.st==='out'){
+        const i=queue.length,blocked=i>0||free()<0,tg=blocked?qpos(i):{x:EX,y:EY};
+        if(mv(r,tg.x,tg.y,dt)){const j=free();if(!queue.length&&j>=0)take(r,j);else{r.st='q';queue.push(r);dotClass(r)}}
+      }else if(r.st==='q'){const p=qpos(queue.indexOf(r));mv(r,p.x,p.y,dt)}
+      else if(r.st==='hop'){const Ln=lanes[r.lane];if(mv(r,450,Ln.y,dt)){r.st='srv';r.s=SRV*rnd(0.85,1.15);r.t=r.s;Ln.st=2;r.dot.setAttribute('opacity',0)}}
+      else if(r.st==='srv'){
+        const Ln=lanes[r.lane];r.t-=dt;
+        if(r.t<=0){Ln.st=0;Ln.f.setAttribute('width',0);ev.busy.push([now,r.s]);ev.transfers.push(now);r.lane=-1;r.st='back';r.x=450;r.y=Ln.y;r.dot.setAttribute('opacity',1);dotClass(r)}
+        else if(vis)Ln.f.setAttribute('width',(170*(1-r.t/r.s)).toFixed(1));
+      }else if(r.st==='back'){if(mv(r,L3OUT.x,L3OUT.y,dt)){complete(r);return}}
+      if(vis){r.dot.setAttribute('cx',r.x.toFixed(1));r.dot.setAttribute('cy',r.y.toFixed(1))}
+    }
+
+    function guessAhead(c,addr){
+      for(let k=1;k<=D;k++){
+        const a2=addr+k,key='s'+c.id+':'+a2;
+        if(present.has(key)||pending.has(key))continue;
+        L.issued++;newReq('guess',null,key,{core:c.id,addr:a2},true);
+      }
+    }
+    function myHolds(c){
+      let m=0;
+      for(const r of reqs)if(r.kind==='held'&&r.meta.core===c.id)m++;
+      for(const s of slots)if(s.line&&s.line.state==='held'&&s.line.core===c.id)m++;
+      return m;
+    }
+    function tryHold(c,k0){
+      const a=c.access,seg=c.seg;
+      if(!a||a.kind!=='stream'||seg.pos!==a.addr)return true;
+      const cap=Math.max(2,Math.floor(B/n))-myHolds(c);
+      let budget=Math.min(seg.end-a.addr+1-k0,B-heldCount,cap,8);
+      if(budget<=0)return false;
+      let got=0;
+      for(let k=k0;k<=seg.end-a.addr&&budget>0;k++){
+        const a2=a.addr+k,key='s'+c.id+':'+a2;
+        if(present.has(key)||pending.has(key)){if(k===0)got++;continue}
+        heldCount++;budget--;got++;
+        if(k>0)L.issued++;
+        newReq('held',null,key,{core:c.id,addr:a2},k>0);
+      }
+      return got>0;
+    }
+    function grantWaiting(){
+      while(roomQueue.length){
+        const c=roomQueue[0];
+        if(!tryHold(c,0))break;
+        roomQueue.shift();
+        c.st='merge';c.waitKey=c.access.key;c.d.setAttribute('class','dot');
+        if(present.has(c.waitKey)){const ln=present.get(c.waitKey);c.waitKey=null;consume(c,ln)}
+        else if(!pending.has(c.waitKey)){c.waitKey=null;c.req=newReq('demand',c,c.access.key,null,false);c.st='dram'}
+        advance(c,c.access);
+      }
+    }
+    function consume(c,ln){
+      ln.lastUse=now;
+      if(ln.state!=='demand'){if(ln.state==='held')heldCount--;if(ln.epoch===epoch)L.consumed++;ln.state='demand';ln.dead=false;paint(ln.slot)}
+      if(!c.shadowHit)L.gained++;
+      if(contract==='declare'&&ln.kind==='stream')release(ln);
+      c.st='hit';c.t=HIT;c.d.setAttribute('class','dot data');
+    }
+    function advance(c,a){
+      if(a.kind!=='stream')return;
+      const seg=c.seg;seg.pos++;
+      if(seg.pos>seg.end){
+        const oldEnd=seg.end;newSegment(c);
+        for(const ln of present.values())if(ln.core===c.id&&ln.kind==='stream'&&ln.state==='guess'&&ln.addr>oldEnd&&ln.addr<c.seg.start){ln.dead=true;paint(ln.slot)}
+      }
+    }
+    function pick(c){
+      if(Math.random()<P_HOT){const i=Math.floor(Math.random()*H);c.access={kind:'hot',key:'h'+c.id+':'+i,addr:i}}
+      else c.access={kind:'stream',key:'s'+c.id+':'+c.seg.pos,addr:c.seg.pos};
+    }
+    function lookup(c){
+      const a=c.access,key=a.key;
+      const sh=shadow.has(key);if(sh)shadow.delete(key);shadow.set(key,1);
+      if(shadow.size>S)shadow.delete(shadow.keys().next().value);
+      if(!sh){ev.necessary.push(now);L.necAll++}
+      ev.work.push(now);c.shadowHit=sh;
+      const ln=present.get(key);
+      if(ln){consume(c,ln)}
+      else if(pending.has(key)){c.st='merge';c.waitKey=key}
+      else if(contract==='declare'&&a.kind==='stream'){
+        if(sh)L.displaced++;
+        if(tryHold(c,0)){c.st='merge';c.waitKey=key}
+        else{c.st='room';roomQueue.push(c);c.d.setAttribute('class','dot room')}
+      }else{if(sh)L.displaced++;c.req=newReq('demand',c,key,null,false);c.st='dram'}
+      if(a.kind==='stream'){
+        if(contract==='guess')guessAhead(c,a.addr);
+        else if(c.st!=='room'&&ln)tryHold(c,1);
+      }
+      if(c.st!=='room')advance(c,a);
+    }
+    function stepCore(c,dt){
+      if(c.st==='cmp'){c.t-=dt;if(c.t<=0){pick(c);c.st='toL3';c.x=c.cx;c.y=c.cy;c.d.setAttribute('opacity',1);c.d.setAttribute('class','dot');tile(c)}}
+      else if(c.st==='toL3'){if(mv(c,L3IN.x,L3IN.y,dt))lookup(c)}
+      else if(c.st==='hit'){c.t-=dt;if(c.t<=0)c.st='ret'}
+      else if(c.st==='ret'){if(mv(c,c.cx,c.cy,dt)){c.st='cmp';c.t=C*rnd(0.6,1.4);c.d.setAttribute('opacity',0);tile(c)}}
+      else return;
+      if(vis){c.d.setAttribute('cx',c.x.toFixed(1));c.d.setAttribute('cy',c.y.toFixed(1))}
+    }
+    function drop(c){
+      if(c.req)cancel(c.req);
+      for(const r of [...reqs])if(r.meta&&r.meta.core===c.id)cancel(r);
+      for(const s of slots)if(s.line&&s.line.core===c.id)release(s.line);
+      for(const k of [...shadow.keys()])if(k.slice(1).startsWith(c.id+':'))shadow.delete(k);
+      const ri=roomQueue.indexOf(c);if(ri>=0)roomQueue.splice(ri,1);
+      c.st='off';c.waitKey=null;c.req=null;c.d.setAttribute('opacity',0);tile(c);
+    }
+    function step(dt){
+      now+=dt;
+      for(let i=0;i<n;i++)stepCore(cores[i],dt);
+      for(const r of [...reqs])stepReq(r,dt);
+      while(queue.length){const j=free();if(j<0)break;take(queue.shift(),j)}
+      if(vis){
+        for(const s of flashing){s.flashT-=dt;if(s.flashT<=0){flashing.delete(s);paint(s)}}
+        const extra=queue.length-70;
+        if(extra>0){qmore.textContent='+'+extra+' more in line';qmore.setAttribute('opacity',1)}else qmore.setAttribute('opacity',0);
+      }
+      if(contract==='declare'&&roomQueue.length)grantWaiting();
+    }
+    function prune(){const lim=now-W;for(const k in ev){const a=ev[k];while(a.length&&(Array.isArray(a[0])?a[0][0]:a[0])<lim)a.shift()}}
+    function count(a,since){let c=0;for(let i=a.length-1;i>=0;i--){const t=Array.isArray(a[i])?a[i][0]:a[i];if(t<since)break;c++}return c}
+    function rates(span){
+      prune();
+      span=Math.max(1,Math.min(span,now-winStart));
+      const since=now-span;
+      let busy=0;for(let i=ev.busy.length-1;i>=0;i--){if(ev.busy[i][0]<since)break;busy+=ev.busy[i][1]}
+      return{w:count(ev.work,since)/span,t:count(ev.transfers,since)/span,nec:count(ev.necessary,since)/span,u:Math.min(1,busy/(K*span)),span};
+    }
+    function setN(v){
+      n=v;
+      for(let i=0;i<MAX;i++){
+        const c=cores[i];
+        if(i<n){if(c.st==='off'){newSegment(c);c.st='cmp';c.t=C*rnd(0.6,1.4);tile(c)}}
+        else if(c.st!=='off')drop(c);
+      }
+    }
+    function setContract(v){
+      contract=v;
+      if(v==='guess'){while(roomQueue.length){const c=roomQueue.shift();c.req=newReq('demand',c,c.access.key,null,false);c.st='dram';advance(c,c.access)}}
+    }
+    function resetCounts(){for(const k in L)L[k]=0;for(const k in ev)ev[k].length=0;winStart=now;epoch++}
+    return{step,setN,setD:v=>{D=v},setContract,resetCounts,rates,L,waiting:()=>roomQueue.length,elapsed:()=>now-winStart};
+  }
+
+  const view=World(true),twin=World(false);
+  let n=0,D=4,contract='guess';
+  const all=f=>{f(view);f(twin)};
+
+  const pct=v=>Math.round(v*100)+'%';
+  const wd=(id,v)=>{$(id).style.width=(Math.max(0,v)*100).toFixed(1)+'%'};
+  function status(u){
+    const L=twin.L;
+    if(contract==='guess'){
+      if(D===0)return'No lookahead: the cache holds only what was demanded';
+      const churn=L.lost+L.displaced>L.gained;
+      if(u<0.6)return churn?'Guesses are churning the cache: more hits lost than gained':'Guesses are paying: hits gained outnumber hits taken away';
+      if(u<0.88)return'DRAM is filling up, and guesses are taking lanes';
+      return'DRAM is saturated. Guesses hold lanes while demands wait behind them';
+    }
+    const w=twin.waiting();
+    if(w)return w+(w===1?' core is':' cores are')+' waiting for room: the cache has promised all it can hold';
+    if(u<0.6)return'Batches are sized to the cache’s room; nothing fetched goes unused';
+    if(u<0.88)return'DRAM is filling up with demand alone';
+    return'DRAM is saturated by demand alone; no lane carries a guess';
+  }
+  function readouts(){
+    const L=twin.L,R=twin.rates(W);
+    const decided=L.consumed+L.late+L.lost+L.dead,fate=decided||1;
+    wd('bCons',L.consumed/fate);wd('bLate',L.late/fate);wd('bLost',L.lost/fate);wd('bDead',L.dead/fate);
+    $('vCons').textContent=pct(L.consumed/fate);$('vLate').textContent=pct(L.late/fate);$('vLost').textContent=pct(L.lost/fate);$('vDead').textContent=pct(L.dead/fate);
+    $('subFate').textContent=L.issued+' fetched ahead since the last reset, '+decided+' with a fate decided';
+    const hm=Math.max(L.gained,L.displaced,1);
+    wd('bGain',L.gained/hm);wd('bDisp',L.displaced/hm);
+    $('vGain').textContent=L.gained;$('vDisp').textContent=L.displaced;
+    const used=L.demandTr+L.consumed+L.late,wasted=L.lost+L.dead,tot=used+wasted;
+    $('subRate').textContent='Work done '+R.w.toFixed(1)+' lines/s · transfers '+R.t.toFixed(1)+'/s · demand alone would need '+R.nec.toFixed(1)+'/s';
+    if(tot<=0){wd('bNec',0);wd('bExc',0);$('vNec').textContent='–';$('vExc').textContent='–'}
+    else{wd('bNec',used/tot);wd('bExc',wasted/tot);$('vNec').textContent=pct(used/tot);$('vExc').textContent=pct(wasted/tot)}
+    let note='';
+    if(L.trAll>60&&L.necAll>60){
+      if(L.trAll<L.necAll*0.9)note='Since the last reset, '+pct(1-L.trAll/L.necAll)+' fewer transfers than demand alone would need: the cache knows what not to keep';
+      else if(L.trAll>L.necAll*1.1)note='Since the last reset, '+pct(L.trAll/L.necAll-1)+' more transfers than demand alone would need';
+    }
+    $('subTr').textContent=note;
+    wd('bBusy',R.u);$('vBusy').textContent=pct(R.u);$('vIdle').textContent=pct(1-R.u);
+    $('st').textContent=status(R.u);
+    const lv=$('live');lv.setAttribute('cx',X(n).toFixed(1));lv.setAttribute('cy',Y(R.w).toFixed(1));lv.setAttribute('opacity',twin.elapsed()>5?1:0);
+  }
+  function resetCounts(){all(w=>w.resetCounts());readouts()}
+  function setN(v){n=v;$('n').value=v;$('nOut').textContent=v;all(w=>w.setN(v))}
+
+  const runs={current:{label:'',pts:new Map()},previous:null};
+  const runLabel=()=>contract==='declare'?'Declare':(D===0?'Guess, no lookahead':'Guess, lookahead '+D);
+  const X=v=>20+400*(v-1)/23,Y=v=>190-160*Math.min(v,YMAX)/YMAX;
+  function poly(id,pts,key){
+    const ks=[...pts.keys()].sort((a,b)=>a-b);
+    $(id).setAttribute('points',ks.map(k=>X(k).toFixed(1)+','+Y(pts.get(k)[key]).toFixed(1)).join(' '));
+  }
+  function drawChart(){
+    poly('cvW',runs.current.pts,'w');poly('cvT',runs.current.pts,'t');poly('cvN',runs.current.pts,'nec');
+    poly('pvW',runs.previous?runs.previous.pts:new Map(),'w');
+    const g=$('pts');while(g.firstChild)g.removeChild(g.firstChild);
+    for(const [k,v] of runs.current.pts){const c=document.createElementNS(NS,'circle');c.setAttribute('cx',X(k).toFixed(1));c.setAttribute('cy',Y(v.w).toFixed(1));c.setAttribute('r',3);c.setAttribute('class','pt');g.appendChild(c)}
+    $('empty').setAttribute('opacity',runs.current.pts.size||(runs.previous&&runs.previous.pts.size)?0:1);
+    $('curLabel').textContent=runs.current.label;
+    if(runs.previous){$('prevItem').hidden=false;$('prevLabel').textContent=runs.previous.label}
+  }
+  function newRun(){if(runs.current.pts.size)runs.previous=runs.current;runs.current={label:runLabel(),pts:new Map()};drawChart()}
+  [1,6,12,18,24].forEach(v=>{const t=document.createElementNS(NS,'text');t.setAttribute('x',X(v).toFixed(1));t.setAttribute('y',208);t.setAttribute('text-anchor','middle');t.textContent=v;$('tk').appendChild(t)});
+  $('ceil').setAttribute('y1',Y(CEIL).toFixed(1));$('ceil').setAttribute('y2',Y(CEIL).toFixed(1));$('ceilT').setAttribute('y',(Y(CEIL)-6).toFixed(1));
+
+  let run=!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches),last=0;
+  let sweep=null;const recordMode=location.hash==='#record';
+  const STEPS=[1,2,4,6,8,12,16,20,24],DWELL=4;
+  function label(){$('pp').textContent=run?'Pause animation':'Run animation'}
+  function stopSweep(){sweep=null;$('auto').textContent='Play sequence'}
+  function hint(){
+    $('hint').textContent=contract==='guess'
+      ?'Guess: after each stream access the prefetcher fetches the next lines, this many ahead, and the cache evicts by recency.'
+      :'Declare: the lookahead slider does nothing. The core states the rest of its segment, the cache grants the room it has, and lines are held until asked for.';
+    $('d').disabled=contract==='declare';
+  }
+  function setContract(v){
+    if(v===contract)return;
+    contract=v;$('cGuess').setAttribute('aria-pressed',v==='guess');$('cDeclare').setAttribute('aria-pressed',v==='declare');
+    all(w=>w.setContract(v));
+    hint();stopSweep();newRun();resetCounts();disturb();
+  }
+  $('cGuess').addEventListener('click',()=>setContract('guess'));
+  $('cDeclare').addEventListener('click',()=>setContract('declare'));
+  let stable=0,lastRec=0;const disturb=()=>{stable=0;lastRec=0};
+  $('n').addEventListener('input',e=>{stopSweep();setN(+e.target.value);resetCounts();disturb()});
+  $('d').addEventListener('input',e=>{D=+e.target.value;$('dOut').textContent=D;all(w=>w.setD(D));stopSweep();newRun();resetCounts();disturb()});
+  $('pp').addEventListener('click',()=>{run=!run;label()});
+  $('reset').addEventListener('click',()=>{resetCounts();disturb()});
+  $('auto').addEventListener('click',()=>{
+    if(sweep){stopSweep();return}
+    run=true;label();runs.current.pts.clear();drawChart();
+    sweep={i:0,t:0};setN(STEPS[0]);resetCounts();disturb();$('auto').textContent='Stop sequence';
+  });
+  function stepSweep(dt){
+    sweep.t+=dt;
+    if(sweep.t>=DWELL){
+      runs.current.pts.set(n,twin.rates(W));drawChart();
+      sweep.i++;
+      if(sweep.i>=STEPS.length){stopSweep();if(recordMode&&contract==='guess')setTimeout(()=>{setContract('declare');$('auto').click()},2500);return}
+      sweep.t=0;setN(STEPS[sweep.i]);resetCounts();disturb();
+    }
+  }
+
+  let acc=0;
+  function frame(ts){
+    if(run&&last){
+      const dt=Math.min(0.05,(ts-last)/1000);
+      view.step(dt);
+      for(let k=0;k<SPEED;k++)twin.step(dt);
+      if(sweep)stepSweep(dt);
+      else{stable+=dt;if(stable>=DWELL&&stable-lastRec>=1.5){lastRec=stable;runs.current.pts.set(n,twin.rates(W));drawChart()}}
+      acc+=dt;if(acc>=0.25){acc=0;readouts()}
+    }
+    last=ts;requestAnimationFrame(frame);
+  }
+  hint();label();runs.current.label=runLabel();drawChart();setN(4);readouts();
+  if(recordMode){document.documentElement.classList.add('record');setTimeout(()=>$('auto').click(),1500)}
+  requestAnimationFrame(frame);
+})();
+</script>
+<script>
+(function(){
+  if(location.search.indexOf('embed')>=0)document.documentElement.classList.add('embed');
+  if(window.parent===window)return;
+  const send=()=>parent.postMessage({navonaBlock:true,title:document.title,height:Math.ceil(document.body.getBoundingClientRect().height)},'*');
+  if(window.ResizeObserver)new ResizeObserver(send).observe(document.body);
+  window.addEventListener('load',send);send();
+})();
+</script>
+</body>
+</html>
